@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
-import datetime as dt
+import os
 import sys
+
+# move config for web
+base_path = "/var/www" 
+os.environ['MPLCONFIGDIR'] = os.path.join(base_path, '.cache/matplotlib')
+
+import datetime as dt
 import json
 import numpy as np
 import matplotlib.dates as dates
@@ -15,19 +21,19 @@ from astropy.utils.data import conf
 conf.remote_timeout = 30
 conf.show_progress_bar = False
 
-AZ_MIN, AZ_MAX = 29, 355 #
-ALT_MIN, ALT_MAX = 15, 84 #
+AZ_MIN, AZ_MAX = 29, 355
+ALT_MIN, ALT_MAX = 15, 84
 ONDREJOV = EarthLocation(lat=49.9085742*u.deg, lon=14.7797511*u.deg, height=512*u.m) #
 
 def resolve_target(name, time):
     solar_system_names = ['sun', 'moon', 'mars', 'jupiter', 'saturn', 'venus']
     if name.lower() in solar_system_names:
-        return get_body(name, time, ONDREJOV) #
+        return get_body(name, time, ONDREJOV)
     try:
-        return SkyCoord.from_name('PSR ' + name, parse=False) #
+        return SkyCoord.from_name('PSR ' + name, parse=False)
     except:
         try:
-            return SkyCoord.from_name(name, parse=True) #
+            return SkyCoord.from_name(name, parse=True)
         except:
             return None
 

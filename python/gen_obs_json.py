@@ -23,11 +23,10 @@ conf.show_progress_bar = False
 
 AZ_MIN, AZ_MAX = 29, 355
 ALT_MIN, ALT_MAX = 15, 84
-ONDREJOV = EarthLocation(lat=49.9085742*u.deg, lon=14.7797511*u.deg, height=512*u.m) #
+ONDREJOV = EarthLocation(lat=49.9085742*u.deg, lon=14.7797511*u.deg, height=512*u.m)
 
-def resolve_target(name, time):
-    solar_system_names = ['sun', 'moon', 'mars', 'jupiter', 'saturn', 'venus']
-    if name.lower() in solar_system_names:
+def resolve_target(name, location, time):
+    if location == 'solar':
         return get_body(name, time, ONDREJOV)
     try:
         return SkyCoord.from_name('PSR ' + name, parse=False)
@@ -42,24 +41,30 @@ def main():
         print(json.dumps({"error": "Usage: script.py YYYY.MM.DD Target1,Target2..."}))
         return
 
+    # arguments as:
+    # 2026-01-13 Sun:solar,B0329+64:deep
+
+
     date_str = sys.argv[1]
-    targets = sys.argv[2].split(',')
-    start_dt = dt.datetime.strptime(date_str, "%Y.%m.%d")
+    targets_input = sys.argv[2].split(',')
+    targets = [t.split(':') for t in targets_input]
+    start_dt = dt.datetime.strptime(date_str, "%Y-%m-%d")
     obs_time = Time(start_dt)
 
-    # 1-minute steps for 24 hours (1441 points)
     delta_t = np.linspace(0, 24, 24*60+1) * u.hour
     times = obs_time + delta_t
     plot_times = [start_dt + dt.timedelta(minutes=i) for i in range(len(delta_t))]
 
     output_data = {}
     plt.figure(figsize=(10, 6))
+    ax = plt.gca()
+    ax.set_xlim([plot_times[0], plot_times[-1]])
 
-    for i, name in enumerate(targets):
+    for i, (name, location) in enumerate(targets):
         name = name.strip()
-        target = resolve_target(name, obs_time)
+        target = resolve_target(name, location, obs_time)
         if not target:
-            output_data[name] = "Not found"
+            output_data[name] = {"windows" : "Target not found"}
             continue
 
         altaz = target.transform_to(AltAz(obstime=times, location=ONDREJOV))
@@ -92,25 +97,35 @@ def main():
             if visible[0] and visible[-1]:
                 merged_start = last[0].strftime("%H:%M")
                 merged_end = first[1].strftime("%H:%M")
-                # Remove the split parts and add the merged one
-                formatted = [f"{w[0].strftime('%H:%M')} - {w[1].strftime('%H:%M')}" for w in windows[1:-1]]
-                formatted.append(f"{merged_start} - {merged_end}")
-                output_data[name] = formatted
+                output_data[name] = {
+                    "location" : location,
+                    "windows" : [{"start": w[0].strftime('%H:%M'), "end": w[1].strftime('%H:%M')} for w in windows[1:-1]]
+                }
+                output_data[name]["windows"].append({"start": merged_start, "end": merged_end})
             else:
-                output_data[name] = [f"{w[0].strftime('%H:%M')} - {w[1].strftime('%H:%M')}" for w in windows]
+                output_data[name] = {
+                    "location" : location,
+                    "windows" : [{"start": w[0].strftime('%H:%M'), "end": w[1].strftime('%H:%M')} for w in windows] #[f"{w[0].strftime('%H:%M')} - {w[1].strftime('%H:%M')}" for w in windows]
+                }
         else:
-            output_data[name] = [f"{w[0].strftime('%H:%M')} - {w[1].strftime('%H:%M')}" for w in windows] if windows else "No visibility"
+            output_data[name] = {
+                    "location" : location,
+                    "windows" : [{"start": w[0].strftime('%H:%M'), "end": w[1].strftime('%H:%M')} for w in windows] if windows else "No visibility" #[f"{w[0].strftime('%H:%M')} - {w[1].strftime('%H:%M')}" for w in windows] if windows else "No visibility"
+                }
+
+    # put 1st object top
+    ax.invert_yaxis()
 
     plt.gca().xaxis.set_major_formatter(dates.DateFormatter('%H:%M'))
-    plt.yticks(range(len(targets)), targets)
+    plt.yticks(range(len(targets)), [name for name, _ in targets])
     plt.grid(True, alpha=0.2)
     plt.title(f"Visibility at Ondrejov: {date_str}")
     
-    img_name = f"plan_{date_str.replace('.','')}.png"
+    img_name = f"plan.png"
     plt.savefig(img_name, dpi=100)
     plt.close()
 
-    print(json.dumps({"image": img_name, "windows": output_data}))
+    print(json.dumps({"date": date_str, "image": img_name, "objects": output_data}))
 
 if __name__ == "__main__":
     main()
